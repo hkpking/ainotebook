@@ -1,12 +1,14 @@
 import React from 'react';
-import { Users } from 'lucide-react';
+import { Users, Loader, ShieldCheck } from 'lucide-react';
 import { Character } from '../../types';
 
 interface CastTabProps {
     characters: Character[];
+    onAuditCharacters?: () => void;
+    isAuditing?: boolean;
 }
 
-const CastTab: React.FC<CastTabProps> = ({ characters }) => {
+const CastTab: React.FC<CastTabProps> = ({ characters, onAuditCharacters, isAuditing }) => {
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between text-gray-400 text-xs uppercase tracking-wider font-semibold">
@@ -17,8 +19,8 @@ const CastTab: React.FC<CastTabProps> = ({ characters }) => {
                 <div
                     key={char.id}
                     className={`p-3 rounded border ${char.inScene
-                            ? 'bg-gray-800 border-teal-900'
-                            : 'bg-transparent border-gray-800 opacity-50'
+                        ? 'bg-gray-800 border-teal-900'
+                        : 'bg-transparent border-gray-800 opacity-50'
                         }`}
                 >
                     <div className="flex justify-between items-center mb-2">
@@ -46,9 +48,22 @@ const CastTab: React.FC<CastTabProps> = ({ characters }) => {
                     </div>
                 </div>
             ))}
-            <button className="w-full py-2 border border-dashed border-gray-700 text-gray-500 text-xs rounded hover:border-gray-500 hover:text-gray-300">
-                + 添加角色 (Step 3)
-            </button>
+
+            <div className="flex gap-2">
+                <button className="flex-1 py-2 border border-dashed border-gray-700 text-gray-500 text-xs rounded hover:border-gray-500 hover:text-gray-300">
+                    + 添加角色 (Step 3)
+                </button>
+                {onAuditCharacters && (
+                    <button
+                        onClick={onAuditCharacters}
+                        disabled={isAuditing}
+                        className="px-3 py-2 bg-indigo-900/30 hover:bg-indigo-900/50 border border-indigo-800 text-indigo-300 text-xs rounded flex items-center justify-center disabled:opacity-50"
+                        title="结构主义角色审计"
+                    >
+                        {isAuditing ? <Loader size={12} className="animate-spin" /> : <ShieldCheck size={14} />}
+                    </button>
+                )}
+            </div>
         </div>
     );
 };

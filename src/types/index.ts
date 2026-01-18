@@ -1,4 +1,4 @@
-export type SuggestionType = 'smooth' | 'conflict' | 'despair' | 'motif';
+export type SuggestionType = 'smooth' | 'conflict' | 'despair' | 'motif' | 'audit'; // Added 'audit'
 export type TabType = 'structure' | 'cast' | 'lore';
 
 export interface Suggestion {
@@ -6,6 +6,14 @@ export interface Suggestion {
     label: string;
     content: string;
     theory: string;
+}
+
+export interface StoryRule {
+    id: string;
+    description: string; // e.g. "Protagonist cannot lie"
+    type: 'physics' | 'magic' | 'taboo' | 'genre';
+    consequence?: string; // e.g. "Lose trust"
+    isActive: boolean;
 }
 
 export interface ArcNode {
@@ -17,6 +25,9 @@ export interface ArcNode {
     functionSlot?: string;
     children?: ArcNode[];
     healthScore?: number;
+    // Morphology & Logic extensions
+    morphologyFunction?: 'lack' | 'struggle' | 'return' | 'departure' | 'banned' | 'violation' | string;
+    logicStatus?: 'open' | 'closed' | 'broken' | 'pending';
 }
 
 export interface Character {

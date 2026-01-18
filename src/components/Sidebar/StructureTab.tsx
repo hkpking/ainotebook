@@ -1,6 +1,6 @@
-import React from 'react';
-import { Layout, ChevronDown, Scroll, Zap, Loader, Sparkles, Activity, Eye, Scale, Ear, ShieldAlert } from 'lucide-react';
-import { ArcNode, Suggestion, DiagnosticResult } from '../../types';
+import React, { useState } from 'react';
+import { Layout, ChevronDown, Scroll, Zap, Loader, Sparkles, Activity, Eye, Scale, Ear, ShieldAlert, Gavel, Plus, X } from 'lucide-react';
+import { ArcNode, Suggestion, DiagnosticResult, StoryRule } from '../../types';
 
 interface StructureTabProps {
     structure: ArcNode[];
@@ -14,6 +14,10 @@ interface StructureTabProps {
     diagnostics: DiagnosticResult;
     isRunningDiagnostics: boolean;
     handleRunDiagnostics: () => void;
+    // Rule Engine Props
+    rules: StoryRule[];
+    onAddRule: (rule: StoryRule) => void;
+    onDeleteRule: (id: string) => void;
 }
 
 const StructureTab: React.FC<StructureTabProps> = ({
@@ -27,8 +31,25 @@ const StructureTab: React.FC<StructureTabProps> = ({
     aiError,
     diagnostics,
     isRunningDiagnostics,
-    handleRunDiagnostics
+    handleRunDiagnostics,
+    rules,
+    onAddRule,
+    onDeleteRule
 }) => {
+    const [newRuleText, setNewRuleText] = useState('');
+
+    const handleAddNewRule = () => {
+        if (!newRuleText.trim()) return;
+        const newRule: StoryRule = {
+            id: Date.now().toString(),
+            description: newRuleText,
+            type: 'physics', // Default
+            isActive: true
+        };
+        onAddRule(newRule);
+        setNewRuleText('');
+    };
+
     return (
         <>
             {/* 嵌套弧线 */}
@@ -56,8 +77,8 @@ const StructureTab: React.FC<StructureTabProps> = ({
                                             {miniArc.children?.map(chapter => (
                                                 <div key={chapter.id} className="group">
                                                     <div className={`text-xs py-1 px-2 rounded flex items-center justify-between ${chapter.status === 'active'
-                                                            ? 'bg-teal-900/20 text-teal-400 border border-teal-900/50'
-                                                            : 'text-gray-600'
+                                                        ? 'bg-teal-900/20 text-teal-400 border border-teal-900/50'
+                                                        : 'text-gray-600'
                                                         }`}>
                                                         <span>{chapter.title}</span>
                                                         {chapter.status === 'active' &&
@@ -78,6 +99,55 @@ const StructureTab: React.FC<StructureTabProps> = ({
                             </div>
                         </div>
                     ))}
+                </div>
+            </div>
+
+            {/* Rule Engine (Story Law) */}
+            <div className="pt-4 border-t border-gray-800 space-y-3">
+                <div className="flex items-center justify-between text-gray-400 text-xs uppercase tracking-wider font-semibold">
+                    <span>规则引擎 (Rule Engine)</span>
+                    <Gavel size={14} />
+                </div>
+
+                {/* Rule List */}
+                <div className="space-y-2">
+                    {rules.length === 0 && (
+                        <div className="text-[10px] text-gray-600 italic px-2">暂无已定义的法则（如：人妖殊途、魔法代价）。</div>
+                    )}
+                    {rules.map(rule => (
+                        <div key={rule.id} className="group flex items-start justify-between bg-gray-900/50 p-2 rounded border border-gray-800 hover:border-gray-700 transition-colors">
+                            <div className="flex items-start gap-2">
+                                <span className="text-[10px] font-mono text-purple-400 bg-purple-900/20 px-1 rounded mt-0.5">
+                                    {rule.type}
+                                </span>
+                                <span className="text-xs text-gray-300">{rule.description}</span>
+                            </div>
+                            <button
+                                onClick={() => onDeleteRule(rule.id)}
+                                className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <X size={12} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Add Rule Input */}
+                <div className="flex gap-2">
+                    <input
+                        type="text"
+                        value={newRuleText}
+                        onChange={(e) => setNewRuleText(e.target.value)}
+                        placeholder="输入新法则 (e.g. 主角没蓝条)"
+                        className="flex-1 bg-gray-900 border border-gray-700 text-xs text-gray-300 rounded px-2 py-1.5 focus:outline-none focus:border-teal-700"
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddNewRule()}
+                    />
+                    <button
+                        onClick={handleAddNewRule}
+                        className="bg-gray-800 hover:bg-gray-700 text-gray-400 p-1.5 rounded border border-gray-700"
+                    >
+                        <Plus size={14} />
+                    </button>
                 </div>
             </div>
 

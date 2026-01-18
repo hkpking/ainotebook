@@ -2,7 +2,7 @@ import React from 'react';
 import StructureTab from './StructureTab';
 import CastTab from './CastTab';
 import LoreTab from './LoreTab';
-import { TabType, ArcNode, Suggestion, Character, LoreItem, DiagnosticResult } from '../../types';
+import { TabType, ArcNode, Suggestion, Character, LoreItem, DiagnosticResult, StoryRule } from '../../types';
 
 interface CopilotSidebarProps {
     zenMode: boolean;
@@ -21,6 +21,13 @@ interface CopilotSidebarProps {
     handleRunDiagnostics: () => void;
     characters: Character[];
     lore: LoreItem[];
+    // Rule Props
+    rules: StoryRule[];
+    onAddRule: (rule: StoryRule) => void;
+    onDeleteRule: (id: string) => void;
+    // Audit Props
+    onAuditCharacters?: () => void;
+    isAuditing?: boolean;
 }
 
 const CopilotSidebar: React.FC<CopilotSidebarProps> = (props) => {
@@ -35,8 +42,8 @@ const CopilotSidebar: React.FC<CopilotSidebarProps> = (props) => {
                 <button
                     onClick={() => setActiveTab('structure')}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'structure'
-                            ? 'text-teal-400 border-b-2 border-teal-500 bg-gray-800/30'
-                            : 'text-gray-500 hover:text-gray-300'
+                        ? 'text-teal-400 border-b-2 border-teal-500 bg-gray-800/30'
+                        : 'text-gray-500 hover:text-gray-300'
                         }`}
                 >
                     结构
@@ -44,8 +51,8 @@ const CopilotSidebar: React.FC<CopilotSidebarProps> = (props) => {
                 <button
                     onClick={() => setActiveTab('cast')}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'cast'
-                            ? 'text-teal-400 border-b-2 border-teal-500 bg-gray-800/30'
-                            : 'text-gray-500 hover:text-gray-300'
+                        ? 'text-teal-400 border-b-2 border-teal-500 bg-gray-800/30'
+                        : 'text-gray-500 hover:text-gray-300'
                         }`}
                 >
                     角色
@@ -53,8 +60,8 @@ const CopilotSidebar: React.FC<CopilotSidebarProps> = (props) => {
                 <button
                     onClick={() => setActiveTab('lore')}
                     className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'lore'
-                            ? 'text-teal-400 border-b-2 border-teal-500 bg-gray-800/30'
-                            : 'text-gray-500 hover:text-gray-300'
+                        ? 'text-teal-400 border-b-2 border-teal-500 bg-gray-800/30'
+                        : 'text-gray-500 hover:text-gray-300'
                         }`}
                 >
                     设定
@@ -76,6 +83,9 @@ const CopilotSidebar: React.FC<CopilotSidebarProps> = (props) => {
                         diagnostics={props.diagnostics}
                         isRunningDiagnostics={props.isRunningDiagnostics}
                         handleRunDiagnostics={props.handleRunDiagnostics}
+                        rules={props.rules}
+                        onAddRule={props.onAddRule}
+                        onDeleteRule={props.onDeleteRule}
                     />
                 )}
                 {activeTab === 'cast' && (

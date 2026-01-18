@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import MainLayout from './components/Layout/MainLayout';
 import Toolbar from './components/UI/Toolbar';
 import ImmersiveEditor from './components/Editor/ImmersiveEditor';
 import StoryCompass from './components/Compass/StoryCompass';
 import CopilotSidebar from './components/Sidebar/CopilotSidebar';
 import { initialStructure, initialSuggestions, initialDiagnostics, mockCharacters, mockLore, initialText } from './data/initialState';
-import { Suggestion, TabType, ArcNode, DiagnosticResult } from './types';
+import { Suggestion, TabType, ArcNode, DiagnosticResult, StoryRule } from './types';
 import { generateAIResponse } from './services/ai';
 
 const App = () => {
@@ -93,6 +93,41 @@ const App = () => {
         }
     };
 
+    const [rules, setRules] = useState<StoryRule[]>([]);
+
+    const handleAddRule = (rule: StoryRule) => {
+        setRules(prev => [...prev, rule]);
+    };
+
+    const handleDeleteRule = (id: string) => {
+        setRules(prev => prev.filter(r => r.id !== id));
+    };
+
+    const [isAuditing, setIsAuditing] = useState(false);
+
+    const handleAuditCharacters = async () => {
+        setIsAuditing(true);
+        // In a real app, this would check all characters against story laws
+        // For now, we simulate an AI check or call the AI service
+        try {
+            // Example call logic:
+            const response = await generateAIResponse(
+                `Audit these characters for morphology functions: ${JSON.stringify(mockCharacters)}`,
+                'audit-characters',
+                { rules }
+            );
+
+            if (response && response.suggestions) {
+                setSuggestions(prev => [...response.suggestions, ...prev]);
+                setActiveTab('structure'); // Switch to see the suggestion
+            }
+        } catch (e) {
+            console.error("Audit failed", e);
+        } finally {
+            setIsAuditing(false);
+        }
+    };
+
     return (
         <MainLayout>
             {/* 左侧：沉浸式编辑器 */}
@@ -139,6 +174,13 @@ const App = () => {
                 handleRunDiagnostics={handleRunDiagnostics}
                 characters={mockCharacters}
                 lore={mockLore}
+                // Rule Engine Props
+                rules={rules}
+                onAddRule={handleAddRule}
+                onDeleteRule={handleDeleteRule}
+                // Audit Props
+                onAuditCharacters={handleAuditCharacters}
+                isAuditing={isAuditing}
             />
         </MainLayout>
     );
