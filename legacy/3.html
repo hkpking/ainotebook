@@ -1,0 +1,693 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { BookOpen, Activity, Zap, ChevronRight, ChevronDown, Layout, Target, AlertCircle, Sparkles, Feather, Minimize2,
+Maximize2, Users, Database, Eye, Ear, ShieldAlert, Scale, Scroll, Loader, Play } from 'lucide-react';
+
+// --- 配置 ---
+// 在实际环境中，这个 Key 会由系统运行时注入，无需手动填写。
+const apiKey = "";
+
+// --- 类型定义 ---
+type SuggestionType = 'smooth' | 'conflict' | 'despair' | 'motif';
+type TabType = 'structure' | 'cast' | 'lore';
+
+interface Suggestion {
+type: SuggestionType;
+label: string;
+content: string;
+theory: string;
+}
+
+interface ArcNode {
+id: string;
+title: string;
+type: 'part' | 'mini-arc' | 'chapter';
+status: 'completed' | 'active' | 'future';
+purpose?: string;
+functionSlot?: string;
+children?: ArcNode[];
+healthScore?: number;
+}
+
+interface Character {
+id: string;
+name: string;
+role: '主角' | '反派' | '配角';
+want: string;
+obstacle: string;
+flaw: string;
+value: string;
+inScene: boolean;
+}
+
+interface LoreItem {
+id: string;
+term: string;
+category: '世界观' | '物品' | '魔法';
+definition: string;
+lastUsed: string;
+}
+
+interface DiagnosticResult {
+povStatus: string;
+sensoryScore: number;
+sensoryAdvice: string;
+binaryOpposition: { valA: string; valB: string; lean: number }; // lean 0-100
+isPassive: boolean;
+passiveAdvice: string;
+}
+
+// --- 初始模拟数据 (作为 Fallback) ---
+const initialStructure: ArcNode[] = [
+{
+id: 'part-1',
+title: '第一卷：边境的尘埃',
+type: 'part',
+status: 'active',
+children: [
+{
+id: 'mini-arc-1',
+title: '序列 A：酒馆的意外',
+type: 'mini-arc',
+status: 'completed',
+healthScore: 95,
+children: [
+{ id: 'ch-1', title: '第一章：陌生人', type: 'chapter', status: 'completed', purpose: '建立常态', functionSlot: '初始情境 (Alpha)' },
+{ id: 'ch-2', title: '第二章：染血的铜币', type: 'chapter', status: 'completed', purpose: '激励事件', functionSlot: '缺失/灾难 (A)' }
+]
+},
+{
+id: 'mini-arc-2',
+title: '序列 B：逃离守备队',
+type: 'mini-arc',
+status: 'active',
+healthScore: 78,
+children: [
+{ id: 'ch-3', title: '第三章：下水道的低语', type: 'chapter', status: 'completed', purpose: '对威胁的反应', functionSlot: '离家/出发 (↑)' },
+{ id: 'ch-4', title: '第四章：抉择时刻', type: 'chapter', status: 'active', purpose: '被迫抉择', functionSlot: '第一功能：考验 (D)' }
+]
+}
+]
+}
+];
+
+const mockCharacters: Character[] = [
+{
+id: 'c1', name: '艾伦', role: '主角',
+want: '活着逃离下城区',
+obstacle: '封锁的城门与守备队',
+flaw: '优柔寡断，总是试图取悦所有人',
+value: '生存/自由',
+inScene: true
+},
+{
+id: 'c2', name: '凯尔', role: '反派',
+want: '抓住艾伦以换取晋升',
+obstacle: '下水道复杂的迷宫地形',
+flaw: '过度自信，轻视下层人',
+value: '秩序/控制',
+inScene: false
+}
+];
+
+const mockLore: LoreItem[] = [
+{ id: 'l1', term: '黑铁锁', category: '物品', definition: '帝国制式锁具，内部有双重倒钩，普通开锁器极易折断。', lastUsed: '第三章' },
+{ id: 'l2', term: '下城区', category: '世界观', definition: '位于主城排污系统周边，终年不见阳光，充满瘴气。', lastUsed: '第一章' }
+];
+
+const initialSuggestions: Suggestion[] = [
+{
+type: 'smooth',
+label: '顺滑推进 (示例)',
+content: '点击上方闪电按钮，让 AI 基于你的正文生成真正的情节预测。',
+theory: 'Action -> Consequence'
+},
+];
+
+const initialDiagnostics: DiagnosticResult = {
+povStatus: '未检测',
+sensoryScore: 0,
+sensoryAdvice: '点击运行诊断以分析',
+binaryOpposition: { valA: 'A', valB: 'B', lean: 50 },
+isPassive: false,
+passiveAdvice: ''
+};
+
+// --- 组件 ---
+
+const FlowFistApp = () => {
+const [text, setText] = useState<string>("艾伦屏住呼吸，手指微微颤抖地伸向那扇生锈的铁门。下水道的恶臭让他几乎窒息，但他知道，这是唯一通往上城区的路。他的指尖触碰到了冰冷的锁孔...");
+    const [zenMode, setZenMode] = useState(false);
+    const [activeTab, setActiveTab] = useState<TabType>('structure');
+        const [structure, setStructure] = useState(initialStructure);
+        const [activeSuggestion, setActiveSuggestion] = useState<Suggestion | null>(null);
+            const [suggestions, setSuggestions] = useState<Suggestion[]>(initialSuggestions);
+                const [diagnostics, setDiagnostics] = useState<DiagnosticResult>(initialDiagnostics);
+                    const [currentStep, setCurrentStep] = useState(3);
+
+                    // Loading States
+                    const [isGeneratingSuggestions, setIsGeneratingSuggestions] = useState(false);
+                    const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+                    const [aiError, setAiError] = useState<string | null>(null);
+
+                        const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                            setText(e.target.value);
+                            };
+
+                            const insertSuggestion = (content: string) => {
+                            setText(prev => prev + "\n" + content);
+                            setActiveSuggestion(null);
+                            };
+
+                            // --- AI API Logic ---
+                            const generateAIResponse = async (prompt: string, type: 'suggestions' | 'diagnostics') => {
+                            if (type === 'suggestions') setIsGeneratingSuggestions(true);
+                            else setIsRunningDiagnostics(true);
+                            setAiError(null);
+
+                            try {
+                            const response = await fetch(
+                            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`,
+                            {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: { responseMimeType: "application/json" } // Force JSON
+                            })
+                            }
+                            );
+
+                            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+                            const data = await response.json();
+                            const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                            if (!resultText) throw new Error("No result from AI");
+
+                            const parsedData = JSON.parse(resultText);
+
+                            if (type === 'suggestions') {
+                            setSuggestions(parsedData.suggestions || parsedData);
+                            } else {
+                            setDiagnostics(parsedData);
+                            }
+
+                            } catch (err: any) {
+                            console.error(err);
+                            setAiError(err.message || "AI 生成失败，请重试");
+                            } finally {
+                            if (type === 'suggestions') setIsGeneratingSuggestions(false);
+                            else setIsRunningDiagnostics(false);
+                            }
+                            };
+
+                            const handleGenerateSuggestions = () => {
+                            const prompt = `
+                            Context: The user is writing a novel. Current text segment: "${text.slice(-1000)}".
+                            Task: Based on Jerry Jenkins' 'Intensify Problems', 'Hopelessness' and Propp's 'Functions',
+                            generate 3 distinct plot continuations suitable for discovery writing.
+                            1. Type 'smooth': Logical consequence (Action -> Reaction).
+                            2. Type 'conflict': Intensify the problem (Make it worse).
+                            3. Type 'motif': Inject a folklore motif or archetype (Propp/Shi Aidong).
+
+                            Output JSON format:
+                            {
+                            "suggestions": [
+                            { "type": "smooth", "label": "顺滑推进", "content": "...", "theory": "..." },
+                            { "type": "conflict", "label": "激化矛盾", "content": "...", "theory": "..." },
+                            { "type": "motif", "label": "母题注入", "content": "...", "theory": "..." }
+                            ]
+                            }
+                            Ensure content is in Chinese. Keep suggestions concise (2-3 sentences).
+                            `;
+                            generateAIResponse(prompt, 'suggestions');
+                            };
+
+                            const handleRunDiagnostics = () => {
+                            const prompt = `
+                            Context: The user is writing a novel chapter. Text: "${text.slice(-2000)}".
+                            Task: Analyze the text for writing quality and structure.
+
+                            Output JSON format:
+                            {
+                            "povStatus": "String (e.g., '稳定 (第三人称限知)' or '警告：视角跳跃')",
+                            "sensoryScore": Number (0-100, based on usage of 5 senses),
+                            "sensoryAdvice": "String (Brief advice on improving imagery)",
+                            "binaryOpposition": {
+                            "valA": "String (Value A, e.g. '生存')",
+                            "valB": "String (Value B, e.g. '死亡')",
+                            "lean": Number (0-100, <50 means leaning to A,>50 leaning to B)
+                                },
+                                "isPassive": Boolean (True if protagonist mostly reacts/observes without making
+                                choices),
+                                "passiveAdvice": "String (Advice if passive)"
+                                }
+                                Ensure analysis values are in Chinese.
+                                `;
+                                generateAIResponse(prompt, 'diagnostics');
+                                };
+
+                                return (
+                                <div className={`flex h-screen w-full bg-[#121212] text-gray-200 font-sans
+                                    transition-all duration-500 overflow-hidden`}>
+
+                                    {/* --- 左侧：沉浸式编辑器 --- */}
+                                    <div className={`flex-1 flex flex-col relative transition-all duration-500 ${zenMode
+                                        ? 'w-full' : 'w-4/5' }`}>
+
+                                        {/* 顶部工具栏 */}
+                                        <div
+                                            className="h-14 border-b border-gray-800 flex items-center justify-between px-6 bg-[#121212]">
+                                            <div
+                                                className="flex items-center space-x-2 text-teal-500 font-bold text-lg">
+                                                <Feather size={20} />
+                                                <span>FlowFist (流拳)</span>
+                                                <span
+                                                    className="text-xs text-amber-500 font-normal ml-2 border border-amber-900/50 bg-amber-900/10 rounded px-1 flex items-center gap-1">
+                                                    <Zap size={10} fill="currentColor" /> AI 实装版
+                                                </span>
+                                            </div>
+                                            <div className="flex space-x-4 text-sm text-gray-500">
+                                                <span>字数: {text.length}</span>
+                                                <button onClick={()=> setZenMode(!zenMode)}
+                                                    className="hover:text-teal-400 transition-colors" title="禅模式">
+                                                    {zenMode ?
+                                                    <Minimize2 size={18} /> :
+                                                    <Maximize2 size={18} />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* 编辑区域 */}
+                                        <div className="flex-1 overflow-y-auto p-8 md:p-16 flex justify-center">
+                                            <div className="w-full max-w-3xl relative">
+                                                <textarea
+                                                    className="w-full h-full bg-transparent border-none outline-none resize-none text-lg leading-loose text-gray-300 placeholder-gray-700 font-serif"
+                                                    placeholder="开始你的探索式写作..." value={text} onChange={handleTextChange}
+                                                    spellCheck={false} />
+
+                                                {/* AI 浮动按钮 (当文本足够长时显示) */}
+                                                {!activeSuggestion && !zenMode && text.length > 30 && (
+                                                <div className="absolute bottom-20 -right-16 flex flex-col gap-2">
+                                                    <button onClick={handleGenerateSuggestions}
+                                                        disabled={isGeneratingSuggestions}
+                                                        className="bg-teal-900/80 text-teal-300 p-2 rounded-full hover:bg-teal-700 transition-all shadow-lg border border-teal-700/50 flex items-center justify-center group w-10 h-10 overflow-hidden hover:w-32"
+                                                        title="生成剧情建议">
+                                                        {isGeneratingSuggestions ?
+                                                        <Loader size={16} className="animate-spin" /> :
+                                                        <Zap size={16} />}
+                                                        <span
+                                                            className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap text-xs ml-0 group-hover:ml-2">
+                                                            预测剧情
+                                                        </span>
+                                                    </button>
+                                                    <button onClick={handleRunDiagnostics}
+                                                        disabled={isRunningDiagnostics}
+                                                        className="bg-indigo-900/80 text-indigo-300 p-2 rounded-full hover:bg-indigo-700 transition-all shadow-lg border border-indigo-700/50 flex items-center justify-center group w-10 h-10 overflow-hidden hover:w-32"
+                                                        title="运行深度诊断">
+                                                        {isRunningDiagnostics ?
+                                                        <Loader size={16} className="animate-spin" /> :
+                                                        <Activity size={16} />}
+                                                        <span
+                                                            className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap text-xs ml-0 group-hover:ml-2">
+                                                            深度诊断
+                                                        </span>
+                                                    </button>
+                                                </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* 底部：12步罗盘 */}
+                                        {!zenMode && (
+                                        <div
+                                            className="h-16 border-t border-gray-800 bg-[#0a0a0a] px-6 flex items-center space-x-4">
+                                            <div className="text-xs text-gray-500 font-mono w-24">12步罗盘</div>
+                                            <div className="flex-1 flex items-center space-x-1">
+                                                {[...Array(12)].map((_, i) => (
+                                                <div key={i} className="flex-1 flex flex-col gap-1 group relative">
+                                                    <div className={`h-2 rounded-full transition-all duration-500 ${ i <
+                                                        currentStep ? 'bg-teal-600' : i===currentStep
+                                                        ? 'bg-amber-500 animate-pulse' : 'bg-gray-800' }`} />
+                                                    <div
+                                                        className="opacity-0 group-hover:opacity-100 absolute bottom-4 left-0 bg-gray-800 text-xs p-2 rounded w-40 z-10 transition-opacity pointer-events-none border border-gray-700 shadow-xl">
+                                                        <div className="font-bold text-teal-400">第 {i+1} 步</div>
+                                                        <div className="text-gray-400 text-[10px] mt-1">
+                                                            {i===2 ? "创造令人难忘的角色" : i===9 ? "至暗时刻 (绝望感)" : "标准剧情点"}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                ))}
+                                            </div>
+                                            <div className="text-xs text-amber-500 font-bold">当前: 扩展情节 (第4步)</div>
+                                        </div>
+                                        )}
+                                    </div>
+
+                                    {/* --- 右侧：智能副驾驶 (Co-pilot) --- */}
+                                    {!zenMode && (
+                                    <div
+                                        className="w-80 border-l border-gray-800 bg-[#0f0f0f] flex flex-col shadow-2xl z-10">
+
+                                        {/* Tab 切换 */}
+                                        <div className="flex border-b border-gray-800">
+                                            <button onClick={()=> setActiveTab('structure')} className={`flex-1 py-3
+                                                text-sm font-medium transition-colors ${activeTab === 'structure' ?
+                                                'text-teal-400 border-b-2 border-teal-500 bg-gray-800/30' :
+                                                'text-gray-500 hover:text-gray-300'}`}>
+                                                结构
+                                            </button>
+                                            <button onClick={()=> setActiveTab('cast')} className={`flex-1 py-3 text-sm
+                                                font-medium transition-colors ${activeTab === 'cast' ? 'text-teal-400
+                                                border-b-2 border-teal-500 bg-gray-800/30' : 'text-gray-500
+                                                hover:text-gray-300'}`}>
+                                                角色
+                                            </button>
+                                            <button onClick={()=> setActiveTab('lore')} className={`flex-1 py-3 text-sm
+                                                font-medium transition-colors ${activeTab === 'lore' ? 'text-teal-400
+                                                border-b-2 border-teal-500 bg-gray-800/30' : 'text-gray-500
+                                                hover:text-gray-300'}`}>
+                                                设定
+                                            </button>
+                                        </div>
+
+                                        {/* 内容区 */}
+                                        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+
+                                            {/* TAB 1: STRUCTURE (结构) */}
+                                            {activeTab === 'structure' && (
+                                            <>
+                                                {/* 嵌套弧线 */}
+                                                <div className="space-y-3">
+                                                    <div
+                                                        className="flex items-center justify-between text-gray-400 text-xs uppercase tracking-wider font-semibold">
+                                                        <span>嵌套弧线 (Nested Arcs)</span>
+                                                        <Layout size={14} />
+                                                    </div>
+                                                    <div className="pl-2 space-y-4 border-l border-gray-800">
+                                                        {structure.map(part => (
+                                                        <div key={part.id}>
+                                                            <div
+                                                                className="flex items-center text-gray-200 font-medium text-sm mb-2">
+                                                                <ChevronDown size={14} className="mr-1 text-gray-500" />
+                                                                {part.title}
+                                                            </div>
+                                                            <div
+                                                                className="pl-4 space-y-3 border-l border-gray-800 ml-1.5">
+                                                                {part.children?.map(miniArc => (
+                                                                <div key={miniArc.id}>
+                                                                    <div
+                                                                        className="flex items-center justify-between text-gray-300 text-xs mb-1">
+                                                                        <span
+                                                                            className="flex items-center text-teal-200">
+                                                                            {miniArc.title}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="pl-4 space-y-1 ml-1">
+                                                                        {miniArc.children?.map(chapter => (
+                                                                        <div key={chapter.id} className="group">
+                                                                            <div className={`text-xs py-1 px-2 rounded
+                                                                                flex items-center justify-between
+                                                                                ${chapter.status==='active'
+                                                                                ? 'bg-teal-900/20 text-teal-400 border border-teal-900/50'
+                                                                                : 'text-gray-600' }`}>
+                                                                                <span>{chapter.title}</span>
+                                                                                {chapter.status === 'active' &&
+                                                                                <div
+                                                                                    className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+                                                                                }
+                                                                            </div>
+                                                                            <div
+                                                                                className="flex items-center gap-2 mt-1 pl-2">
+                                                                                <span
+                                                                                    className="text-[10px] text-purple-400 bg-purple-900/20 px-1 rounded flex items-center"
+                                                                                    title="故事功能槽">
+                                                                                    <Scroll size={8} className="mr-1" />
+                                                                                    {chapter.functionSlot}
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* 预测器 (Real AI) */}
+                                                <div className="pt-4 border-t border-gray-800 space-y-3">
+                                                    <div
+                                                        className="flex items-center justify-between text-gray-400 text-xs uppercase tracking-wider font-semibold">
+                                                        <span>下一步预测 (Next Move)</span>
+                                                        <button onClick={handleGenerateSuggestions}
+                                                            disabled={isGeneratingSuggestions}
+                                                            className="text-amber-500 hover:text-amber-400 disabled:opacity-50">
+                                                            {isGeneratingSuggestions ?
+                                                            <Loader size={14} className="animate-spin" /> :
+                                                            <Zap size={14} />}
+                                                        </button>
+                                                    </div>
+
+                                                    {activeSuggestion ? (
+                                                    <div
+                                                        className="bg-gray-800/50 rounded-lg p-3 border border-gray-700 animate-in fade-in zoom-in-95 duration-200">
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${
+                                                                activeSuggestion.type==='motif'
+                                                                ? 'bg-purple-900 text-purple-300'
+                                                                : 'bg-amber-900 text-amber-300' }`}>
+                                                                {activeSuggestion.label}
+                                                            </span>
+                                                            <button onClick={()=> setActiveSuggestion(null)}
+                                                                className="text-gray-500 hover:text-white">×</button>
+                                                        </div>
+                                                        <p className="text-sm text-gray-300 mb-3">
+                                                            {activeSuggestion.content}</p>
+                                                        <div className="text-[10px] text-gray-500 italic mb-2">依据:
+                                                            {activeSuggestion.theory}</div>
+                                                        <button onClick={()=>
+                                                            insertSuggestion(activeSuggestion.content)}
+                                                            className="w-full py-1.5 bg-teal-700 hover:bg-teal-600
+                                                            text-white text-xs rounded">采纳 (Tab)</button>
+                                                    </div>
+                                                    ) : (
+                                                    <div className="space-y-2">
+                                                        {aiError && <div
+                                                            className="text-xs text-red-500 bg-red-900/20 p-2 rounded">
+                                                            {aiError}</div>}
+                                                        {suggestions.map((s, idx) => (
+                                                        <button key={idx} onClick={()=> setActiveSuggestion(s)}
+                                                            className="w-full text-left p-2 rounded border
+                                                            border-gray-800 hover:bg-gray-800 text-xs text-gray-500
+                                                            hover:text-gray-300 transition-all flex justify-between
+                                                            items-center group">
+                                                            <span>{s.label}</span>
+                                                            {s.type === 'motif' &&
+                                                            <Sparkles size={10}
+                                                                className="text-purple-500 opacity-0 group-hover:opacity-100" />
+                                                            }
+                                                        </button>
+                                                        ))}
+                                                    </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 诊断 - 增强版 (Real AI) */}
+                                                <div className="pt-4 border-t border-gray-800 space-y-3">
+                                                    <div
+                                                        className="flex items-center justify-between text-gray-400 text-xs uppercase tracking-wider font-semibold">
+                                                        <span>场景诊断 (Diagnostics)</span>
+                                                        <button onClick={handleRunDiagnostics}
+                                                            disabled={isRunningDiagnostics}
+                                                            className="text-indigo-500 hover:text-indigo-400 disabled:opacity-50">
+                                                            {isRunningDiagnostics ?
+                                                            <Loader size={14} className="animate-spin" /> :
+                                                            <Activity size={14} />}
+                                                        </button>
+                                                    </div>
+
+                                                    <div
+                                                        className="bg-gray-900 rounded p-3 space-y-4 border border-gray-800 relative">
+                                                        {isRunningDiagnostics && (
+                                                        <div
+                                                            className="absolute inset-0 bg-gray-900/80 z-10 flex items-center justify-center">
+                                                            <Loader className="animate-spin text-indigo-500" />
+                                                        </div>
+                                                        )}
+
+                                                        {/* POV Check */}
+                                                        <div className="flex items-center justify-between">
+                                                            <div className="flex items-center text-xs text-gray-400">
+                                                                <Eye size={12} className="mr-2 text-blue-400" /> 视角一致性
+                                                            </div>
+                                                            <span
+                                                                className="text-xs text-teal-500 font-mono">{diagnostics.povStatus}</span>
+                                                        </div>
+
+                                                        {/* 二元对立图谱 */}
+                                                        <div className="space-y-1">
+                                                            <div
+                                                                className="flex items-center justify-between text-xs text-gray-400">
+                                                                <div className="flex items-center">
+                                                                    <Scale size={12} className="mr-2 text-red-400" />
+                                                                    二元对立 (Binary)
+                                                                </div>
+                                                            </div>
+                                                            <div
+                                                                className="flex items-center justify-between text-[10px] text-gray-500 px-1">
+                                                                <span>{diagnostics.binaryOpposition.valA}</span>
+                                                                <span>{diagnostics.binaryOpposition.valB}</span>
+                                                            </div>
+                                                            <div
+                                                                className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden flex relative">
+                                                                <div className="h-full bg-gradient-to-r from-blue-600 to-red-600 transition-all duration-1000"
+                                                                    style={{width: '100%' }}>
+                                                                    {/* Marker */}
+                                                                    <div className="absolute top-0 bottom-0 w-1 bg-white shadow"
+                                                                        style={{left:
+                                                                        `${diagnostics.binaryOpposition.lean}%`,
+                                                                        transition: 'left 1s' }}></div>
+                                                                </div>
+                                                            </div>
+                                                            <p
+                                                                className="text-[10px] text-gray-600 italic text-center mt-1">
+                                                                倾向值: {diagnostics.binaryOpposition.lean}</p>
+                                                        </div>
+
+                                                        {/* Sensory */}
+                                                        <div className="space-y-1">
+                                                            <div
+                                                                className="flex items-center justify-between text-xs text-gray-400">
+                                                                <div className="flex items-center">
+                                                                    <Ear size={12} className="mr-2 text-purple-400" />
+                                                                    感官深度
+                                                                </div>
+                                                                <span className={`text-xs ${diagnostics.sensoryScore> 70
+                                                                    ? 'text-green-500' :
+                                                                    'text-amber-500'}`}>{diagnostics.sensoryScore}</span>
+                                                            </div>
+                                                            <div
+                                                                className="w-full bg-gray-800 h-1 rounded-full overflow-hidden">
+                                                                <div className="bg-purple-600 h-full transition-all duration-1000"
+                                                                    style={{width: `${diagnostics.sensoryScore}%`}}>
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-[10px] text-gray-600 italic">
+                                                                {diagnostics.sensoryAdvice}</p>
+                                                        </div>
+
+                                                        {/* Passive Protagonist Warning */}
+                                                        {diagnostics.isPassive && (
+                                                        <div
+                                                            className="flex items-start gap-2 text-[10px] text-amber-500 bg-amber-900/10 p-2 rounded border border-amber-900/30">
+                                                            <ShieldAlert size={12} className="mt-0.5 flex-shrink-0" />
+                                                            <span>{diagnostics.passiveAdvice}</span>
+                                                        </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </>
+                                            )}
+
+                                            {/* TAB 2: CAST (角色) */}
+                                            {activeTab === 'cast' && (
+                                            <div className="space-y-4">
+                                                <div
+                                                    className="flex items-center justify-between text-gray-400 text-xs uppercase tracking-wider font-semibold">
+                                                    <span>在场角色 (Active Characters)</span>
+                                                    <Users size={14} />
+                                                </div>
+                                                {mockCharacters.map(char => (
+                                                <div key={char.id} className={`p-3 rounded border ${char.inScene
+                                                    ? 'bg-gray-800 border-teal-900'
+                                                    : 'bg-transparent border-gray-800 opacity-50' }`}>
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span
+                                                            className="text-sm font-bold text-gray-200">{char.name}</span>
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded
+                                                            ${char.role.includes('主角') ? 'bg-blue-900 text-blue-200'
+                                                            : 'bg-red-900 text-red-200' }`}>{char.role}</span>
+                                                    </div>
+
+                                                    <div className="space-y-2">
+                                                        <div className="text-xs">
+                                                            <span className="text-gray-500 block mb-0.5">欲望
+                                                                (Want):</span>
+                                                            <span className="text-gray-300">{char.want}</span>
+                                                        </div>
+                                                        <div className="text-xs">
+                                                            <span className="text-gray-500 block mb-0.5">阻碍
+                                                                (Obstacle):</span>
+                                                            <span className="text-gray-300">{char.obstacle}</span>
+                                                        </div>
+                                                        {/* 核心价值观 (Story Laws) */}
+                                                        <div
+                                                            className="text-xs pt-1 border-t border-gray-700 mt-1 flex justify-between">
+                                                            <span className="text-gray-500">核心价值:</span>
+                                                            <span className="text-teal-400">{char.value}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                ))}
+                                                <button
+                                                    className="w-full py-2 border border-dashed border-gray-700 text-gray-500 text-xs rounded hover:border-gray-500 hover:text-gray-300">
+                                                    + 添加角色 (Step 3)
+                                                </button>
+                                            </div>
+                                            )}
+
+                                            {/* TAB 3: LORE (设定) */}
+                                            {activeTab === 'lore' && (
+                                            <div className="space-y-4">
+                                                <div
+                                                    className="flex items-center justify-between text-gray-400 text-xs uppercase tracking-wider font-semibold">
+                                                    <span>研究与设定 (Lore)</span>
+                                                    <Database size={14} />
+                                                </div>
+
+                                                <div className="bg-gray-900/50 p-2 rounded border border-gray-800 mb-4">
+                                                    <input type="text" placeholder="搜索知识库..."
+                                                        className="w-full bg-transparent text-sm text-gray-300 outline-none placeholder-gray-600" />
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    {mockLore.map(item => (
+                                                    <div key={item.id} className="group cursor-pointer">
+                                                        <div className="flex items-center justify-between text-xs mb-1">
+                                                            <span
+                                                                className="text-teal-400 font-medium">{item.term}</span>
+                                                            <span
+                                                                className="text-gray-600 bg-gray-800 px-1 rounded text-[10px]">{item.category}</span>
+                                                        </div>
+                                                        <p
+                                                            className="text-xs text-gray-400 leading-relaxed group-hover:text-gray-200 transition-colors">
+                                                            {item.definition}
+                                                        </p>
+                                                        <div className="text-[10px] text-gray-600 mt-1 text-right">
+                                                            上次出现: {item.lastUsed}
+                                                        </div>
+                                                        <div className="h-px bg-gray-800 w-full mt-2" />
+                                                    </div>
+                                                    ))}
+                                                </div>
+
+                                                <div className="p-3 bg-blue-900/10 border border-blue-900/30 rounded">
+                                                    <div className="text-xs text-blue-400 font-bold mb-1">调研提醒 (Step 5)
+                                                    </div>
+                                                    <p className="text-[10px] text-blue-200/70">
+                                                        检查：在这个时代背景下，这种锁具的机械结构是否合理？（不要依赖好莱坞式的开锁描写）。
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            )}
+
+                                        </div>
+                                    </div>
+                                    )}
+                                </div>
+                                );
+                                };
+
+                                export default FlowFistApp;
